@@ -6,18 +6,14 @@ const options = {
     info: {
       title: 'Farm ERP API',
       version: '2.0.0',
-      description: 'Complete Farm ERP System API',
+      description: 'Complete Farm ERP System API Documentation',
       contact: {
         name: 'Farm ERP Team',
         email: 'support@farmerp.com',
       },
     },
-    servers: [
-      {
-        url: 'http://localhost:5000/api',
-        description: 'Development Server',
-      },
-    ],
+    // No servers defined - will be added dynamically per request
+    servers: [],
     components: {
       securitySchemes: {
         bearerAuth: {
