@@ -3,20 +3,16 @@ const LedgerEntry = require('../models/LedgerEntry');
 const Farmer = require('../models/Farmer');
 const Purchase = require('../models/Purchase');
 const logger = require('../config/logger');
-
 class LedgerService {
   async addFarmerLedgerEntry({ vendorId, farmerId, description, referenceId, referenceType, debit = 0, credit = 0 }) {
     try {
-      // Get last balance for this farmer
       const lastEntry = await LedgerEntry.findOne({
         vendorId,
         farmerId,
         ledgerType: 'farmer'
       }).sort({ entryDate: -1, createdAt: -1 });
-      
       const previousBalance = lastEntry ? lastEntry.runningBalance : 0;
       const newBalance = previousBalance + credit - debit;
-      
       const ledgerEntry = await LedgerEntry.create({
         vendorId,
         ledgerType: 'farmer',

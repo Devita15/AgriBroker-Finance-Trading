@@ -1,60 +1,40 @@
 // src/controllers/auditController.js
-const auditService = require('../services/auditService');
-const logger = require('../config/logger');
+const AuditLog = require('../models/AuditLog');
+const logger   = require('../config/logger');
 
-class AuditController {
-  async getAuditLogs(req, res) {
-    try {
-      // Only superadmin and operator can view audit logs
-      if (req.user.role !== 'superadmin' && req.user.role !== 'operator') {
-        return res.status(403).json({ error: 'Access denied' });
-      }
-      
-      const { page = 1, limit = 50, startDate, endDate, action, entityType, userId } = req.query;
-      
-      const filters = {
-        startDate,
-        endDate,
-        action,
-        entityType,
-        userId,
-      };
-      
-      const logs = await auditService.getAuditLogs(filters);
-      
-      const paginatedLogs = logs.slice((page - 1) * limit, page * limit);
-      
-      res.json({
-        logs: paginatedLogs,
-        total: logs.length,
-        page: parseInt(page),
-        pages: Math.ceil(logs.length / limit),
-      });
-    } catch (error) {
-      logger.error(`Get audit logs error: ${error.message}`);
-      res.status(500).json({ error: error.message });
-    }
-  }
-  
-  async getAuditLogById(req, res) {
-    try {
-      if (req.user.role !== 'superadmin' && req.user.role !== 'operator') {
-        return res.status(403).json({ error: 'Access denied' });
-      }
-      
-      const AuditLog = require('../models/AuditLog');
-      const log = await AuditLog.findById(req.params.id).populate('userId', 'name email role');
-      
-      if (!log) {
-        return res.status(404).json({ error: 'Audit log not found' });
-      }
-      
-      res.json(log);
-    } catch (error) {
-      logger.error(`Get audit log error: ${error.message}`);
-      res.status(500).json({ error: error.message });
-    }
-  }
-}
+exports.getAuditLogs = async (req, res) => {
+  try {
+    const { page = 1, limit = 50, startDate, endDate, action, entityType, userId } = req.query;
 
-module.exports = new AuditController();
+    const filter = {};
+    if (action)     filter.action     = action;
+    if (entityType) filter.entityType = entityType;
+    if (userId)     filter.userId     = userId;
+    if (startDate || endDate) {
+      filter.createdAt = {};
+      if (startDate) filter.createdAt.$gte = new Date(startDate);
+      if (endDate)   filter.createdAt.$lte = new Date(endDate);
+    }
+
+    const skip = (Number(page) - 1) * Number(limit);
+    const [logs, total] = await Promise.all([
+      AuditLog.find(filter).sort({ createdAt: -1 }).skip(skip).limit(Number(limit)).populate('userId', 'name email role'),
+      AuditLog.countDocuments(filter),
+    ]);
+
+    res.json({ success: true, data: logs, pagination: { page: Number(page), limit: Number(limit), total, pages: Math.ceil(total / limit) } });
+  } catch (error) {
+    logger.error(`Get audit logs error: ${error.message}`);
+    res.status(500).json({ success: false, error: 'Failed to fetch audit logs' });
+  }
+};
+
+exports.getAuditLogById = async (req, res) => {
+  try {
+    const log = await AuditLog.findById(req.params.id).populate('userId', 'name email role');
+    if (!log) return res.status(404).json({ success: false, error: 'Audit log not found' });
+    res.json({ success: true, data: log });
+  } catch (error) {
+    res.status(500).json({ success: false, error: 'Failed to fetch audit log' });
+  }
+};

@@ -1,3 +1,4 @@
+// src/config/swagger.js
 const swaggerJsdoc = require('swagger-jsdoc');
 
 const options = {
@@ -12,8 +13,16 @@ const options = {
         email: 'support@farmerp.com',
       },
     },
-    // No servers defined - will be added dynamically per request
-    servers: [],
+    servers: [
+      {
+        url: 'http://localhost:5001',
+        description: 'Development server (no /api prefix)',
+      },
+      {
+        url: process.env.API_URL || 'http://localhost:5001',
+        description: 'Current server',
+      }
+    ],
     components: {
       securitySchemes: {
         bearerAuth: {
@@ -25,6 +34,7 @@ const options = {
     },
     security: [{ bearerAuth: [] }],
   },
+  // Make sure your route files have the correct paths with /api prefix
   apis: ['./src/routes/*.js'],
 };
 

@@ -1,38 +1,38 @@
 // src/models/AuditLog.js
 const mongoose = require('mongoose');
 
-const auditLogSchema = new mongoose.Schema({
-  userId: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'User',
-    required: true,
+const auditLogSchema = new mongoose.Schema(
+  {
+    userId:       { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
+    action:       { type: String, required: true },
+    entityType:   { type: String, required: true },
+    entityId:     { type: mongoose.Schema.Types.ObjectId, default: null },
+    beforeValue:  { type: mongoose.Schema.Types.Mixed, default: null },
+    afterValue:   { type: mongoose.Schema.Types.Mixed, default: null },
+    ipAddress:    { type: String, default: '' },
+    deviceInfo:   { type: String, default: '' },
+    notes:        { type: String, default: '' },
   },
-  action: {
-    type: String,
-    required: true,
-  },
-  entityType: {
-    type: String,
-    required: true,
-  },
-  entityId: mongoose.Schema.Types.ObjectId,
-  beforeValue: mongoose.Schema.Types.Mixed,
-  afterValue: mongoose.Schema.Types.Mixed,
-  ipAddress: String,
-  deviceInfo: String,
-  notes: String,
-}, {
-  timestamps: true,
-  // Ensure no updates are allowed
-  strict: true,
+  {
+    timestamps: true,
+    // Immutable — no updates allowed
+  }
+);
+
+// Prevent any updates to audit logs
+auditLogSchema.pre('findOneAndUpdate', function () {
+  throw new Error('Audit logs are immutable');
+});
+auditLogSchema.pre('updateOne', function () {
+  throw new Error('Audit logs are immutable');
+});
+auditLogSchema.pre('updateMany', function () {
+  throw new Error('Audit logs are immutable');
 });
 
-// Prevent updates
-auditLogSchema.pre('save', function(next) {
-  if (this.isModified('createdAt')) {
-    return next(new Error('Cannot modify audit log'));
-  }
-  next();
-});
+auditLogSchema.index({ userId: 1 });
+auditLogSchema.index({ entityType: 1 });
+auditLogSchema.index({ action: 1 });
+auditLogSchema.index({ createdAt: -1 });
 
 module.exports = mongoose.model('AuditLog', auditLogSchema);

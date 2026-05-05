@@ -1,80 +1,49 @@
+// src/middleware/validation.js
 const { body, param, query, validationResult } = require('express-validator');
 
-// Middleware to check validation results
 const validateRequest = (req, res, next) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
-    return res.status(400).json({ 
+    return res.status(400).json({
       success: false,
-      error: 'Validation failed', 
-      details: errors.array().map(err => ({
-        field: err.path,
-        message: err.msg,
-      })),
+      error: 'Validation failed',
+      details: errors.array().map(e => ({ field: e.path, message: e.msg })),
     });
   }
   next();
 };
 
-// User registration validation
+// ─── Auth ────────────────────────────────────────────────────────────────────
+
 const validateUserRegistration = [
-  body('name')
-    .notEmpty().withMessage('Name is required')
-    .trim()
-    .isLength({ min: 2, max: 100 }).withMessage('Name must be between 2 and 100 characters'),
-  
-  body('email')
-    .notEmpty().withMessage('Email is required')
-    .isEmail().withMessage('Invalid email address')
-    .normalizeEmail(),
-  
-  body('password')
-    .notEmpty().withMessage('Password is required')
-    .isLength({ min: 6, max: 50 }).withMessage('Password must be between 6 and 50 characters'),
-  
-  body('role')
-    .optional()
-    .isIn(['superadmin', 'operator']).withMessage('Invalid role. Must be superadmin or operator'),
-  
-  body('phone')
-    .optional()
-    .trim()
-    .matches(/^\+?[0-9\s\-]{10,15}$/).withMessage('Invalid phone number format'),
-  
+  body('name').notEmpty().withMessage('Name is required').trim().isLength({ min: 2, max: 100 }),
+  body('email').notEmpty().isEmail().withMessage('Invalid email').normalizeEmail(),
+  body('password').notEmpty().isLength({ min: 6, max: 50 }).withMessage('Password must be 6–50 chars'),
+  body('role').optional().isIn(['superadmin', 'operator']).withMessage('Invalid role'),
+  body('phone').optional().trim().matches(/^\+?[0-9\s\-]{10,15}$/).withMessage('Invalid phone'),
   validateRequest,
 ];
 
-// Login validation
 const validateLogin = [
-  body('email')
-    .notEmpty().withMessage('Email is required')
-    .isEmail().withMessage('Invalid email address')
-    .normalizeEmail(),
-  
-  body('password')
-    .notEmpty().withMessage('Password is required'),
-  
+  body('email').notEmpty().isEmail().withMessage('Invalid email').normalizeEmail(),
+  body('password').notEmpty().withMessage('Password is required'),
   validateRequest,
 ];
 
-// Refresh token validation
 const validateRefreshToken = [
-  body('refreshToken')
-    .notEmpty().withMessage('Refresh token is required')
-    .isString().withMessage('Refresh token must be a string'),
-  
+  body('refreshToken').notEmpty().isString().withMessage('Refresh token is required'),
   validateRequest,
 ];
 
-// Farmer validations
+// ─── Farmer ──────────────────────────────────────────────────────────────────
+
 const validateFarmer = [
-  body('name').notEmpty().withMessage('Name is required').trim(),
-  body('mobile')
-    .notEmpty().withMessage('Mobile number is required')
-    .matches(/^\+?[0-9\s\-]{10,15}$/).withMessage('Invalid mobile number'),
+  body('name').notEmpty().withMessage('Farmer name is required').trim(),
+  body('mobile').notEmpty().matches(/^\+?[0-9\s\-]{10,15}$/).withMessage('Invalid mobile number'),
   body('address').optional().trim(),
   body('village').optional().trim(),
   body('city').optional().trim(),
+  body('state').optional().trim(),
   body('bankAccountNumber').optional().trim(),
   body('ifscCode').optional().trim(),
   body('bankName').optional().trim(),
@@ -82,79 +51,82 @@ const validateFarmer = [
   validateRequest,
 ];
 
-// Purchase validations
+// ─── Purchase ─────────────────────────────────────────────────────────────────
+
 const validatePurchase = [
-  body('farmerId')
-    .notEmpty().withMessage('Farmer ID is required')
-    .isMongoId().withMessage('Invalid Farmer ID format'),
+  body('farmerId').notEmpty().isMongoId().withMessage('Invalid Farmer ID'),
   body('purchaseDate').optional().isISO8601().withMessage('Invalid date format'),
-  body('lines').optional().isArray().withMessage('Lines must be an array'),
+  body('lines').isArray({ min: 1 }).withMessage('At least one product line is required'),
+  body('lines.*.productName').notEmpty().withMessage('Product name is required'),
+  body('lines.*.pricingType')
+    .isIn(['kg', 'quintal', 'piece', 'bunch', 'crate', 'dozen', 'flat'])
+    .withMessage('Invalid pricing type'),
+  body('lines.*.actualQty').isFloat({ min: 0 }).withMessage('Actual qty must be >= 0'),
+  body('lines.*.rate').isFloat({ min: 0 }).withMessage('Rate must be >= 0'),
   body('deductions').optional().isObject().withMessage('Deductions must be an object'),
   validateRequest,
 ];
 
-// Payment validations
+// ─── Payment ──────────────────────────────────────────────────────────────────
+
 const validatePayment = [
-  body('purchaseId')
-    .notEmpty().withMessage('Purchase ID is required')
-    .isMongoId().withMessage('Invalid Purchase ID format'),
-  body('amount')
-    .isNumeric().withMessage('Amount must be a number')
-    .isFloat({ min: 0.01 }).withMessage('Amount must be greater than 0'),
-  body('paymentMode')
-    .isIn(['cash', 'upi', 'bank', 'cheque']).withMessage('Invalid payment mode'),
+  body('purchaseId').notEmpty().isMongoId().withMessage('Invalid Purchase ID'),
+  body('amount').isFloat({ min: 0.01 }).withMessage('Amount must be > 0'),
+  body('paymentMode').isIn(['cash', 'upi', 'bank', 'cheque']).withMessage('Invalid payment mode'),
   body('referenceNumber').optional().trim(),
-  body('paymentDate').optional().isISO8601().withMessage('Invalid date format'),
+  body('paymentDate').optional().isISO8601().withMessage('Invalid date'),
   validateRequest,
 ];
 
-// Expense validations
+// ─── Expense ──────────────────────────────────────────────────────────────────
+
 const validateExpense = [
-  body('category').notEmpty().withMessage('Category is required').trim(),
-  body('amount')
-    .isNumeric().withMessage('Amount must be a number')
-    .isFloat({ min: 0.01 }).withMessage('Amount must be greater than 0'),
-  body('expenseDate').optional().isISO8601().withMessage('Invalid date format'),
-  body('description').optional().trim(),
-  body('paidBy')
-    .isIn(['cash', 'upi', 'bank', 'cheque']).withMessage('Invalid payment mode'),
+  body('category')
+    .notEmpty()
+    .isIn([
+      'transport_logistics', 'labour_wages', 'market_fees', 'storage_cold_chain',
+      'shop_office', 'repairs_maintenance', 'banking_finance', 'marketing_misc',
+    ])
+    .withMessage('Invalid category'),
+  body('amount').isFloat({ min: 0.01 }).withMessage('Amount must be > 0'),
+  body('description').notEmpty().withMessage('Description is required').trim(),
+  body('paidBy').isIn(['cash', 'upi', 'bank', 'cheque']).withMessage('Invalid payment mode'),
+  body('expenseDate').optional().isISO8601().withMessage('Invalid date'),
   body('paidTo').optional().trim(),
   validateRequest,
 ];
 
-// ID param validation
+// ─── Sale ─────────────────────────────────────────────────────────────────────
+
+const validateSale = [
+  body('buyerName').notEmpty().withMessage('Buyer name is required').trim(),
+  body('lines').isArray({ min: 1 }).withMessage('At least one product line is required'),
+  body('lines.*.productName').notEmpty().withMessage('Product name is required'),
+  body('lines.*.qty').isFloat({ min: 0.01 }).withMessage('Qty must be > 0'),
+  body('lines.*.sellingPrice').isFloat({ min: 0.01 }).withMessage('Selling price must be > 0'),
+  body('gstPercent').optional().isFloat({ min: 0, max: 100 }).withMessage('Invalid GST %'),
+  body('paymentMode').optional().isIn(['cash', 'upi', 'bank', 'cheque', 'credit']),
+  validateRequest,
+];
+
+// ─── Shared ───────────────────────────────────────────────────────────────────
+
 const validateIdParam = [
   param('id').isMongoId().withMessage('Invalid ID format'),
   validateRequest,
 ];
 
-// Pagination validation
 const validatePagination = [
-  query('page')
-    .optional()
-    .isInt({ min: 1 }).withMessage('Page must be a positive integer')
-    .toInt(),
-  query('limit')
-    .optional()
-    .isInt({ min: 1, max: 100 }).withMessage('Limit must be between 1 and 100')
-    .toInt(),
-  query('sortBy')
-    .optional()
-    .isString().withMessage('Sort field must be a string'),
-  query('sortOrder')
-    .optional()
-    .isIn(['asc', 'desc']).withMessage('Sort order must be asc or desc'),
+  query('page').optional().isInt({ min: 1 }).withMessage('Page must be positive').toInt(),
+  query('limit').optional().isInt({ min: 1, max: 100 }).withMessage('Limit 1–100').toInt(),
+  query('sortBy').optional().isString(),
+  query('sortOrder').optional().isIn(['asc', 'desc']),
   validateRequest,
 ];
 
-// Date range validation
 const validateDateRange = [
-  query('startDate')
-    .optional()
-    .isISO8601().withMessage('Invalid start date format'),
-  query('endDate')
-    .optional()
-    .isISO8601().withMessage('Invalid end date format'),
+  query('startDate').optional().isISO8601().withMessage('Invalid start date'),
+  query('endDate').optional().isISO8601().withMessage('Invalid end date'),
   validateRequest,
 ];
 
@@ -166,6 +138,7 @@ module.exports = {
   validatePurchase,
   validatePayment,
   validateExpense,
+  validateSale,
   validateIdParam,
   validatePagination,
   validateDateRange,

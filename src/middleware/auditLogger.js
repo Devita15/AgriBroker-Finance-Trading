@@ -1,37 +1,32 @@
 // src/middleware/auditLogger.js
 const AuditLog = require('../models/AuditLog');
 
-const auditLog = (action, entityType) => {
-  return async (req, res, next) => {
-    const oldSend = res.send;
-    
-    res.send = function(data) {
-      // Store the original response
-      const responseData = data;
-      
-      // Create audit log entry
-      const auditEntry = {
-        userId: req.userId,
-        action: action,
-        entityType: entityType,
-        entityId: req.params.id || req.body._id,
-        beforeValue: req.originalEntity, // Set by controller
-        afterValue: req.body,
-        ipAddress: req.ip,
-        deviceInfo: req.headers['user-agent'],
-        notes: req.body.notes || req.query.reason,
-      };
-      
-      // Async save audit log (don't wait for response)
-      AuditLog.create(auditEntry).catch(err => 
-        console.error('Audit log error:', err)
-      );
-      
-      oldSend.apply(res, arguments);
-    };
-    
-    next();
+/**
+ * Middleware factory that logs actions to the immutable AuditLog.
+ * Usage: router.post('/path', authenticate, auditLog('CREATE', 'Purchase'), controller)
+ */
+const auditLog = (action, entityType) => async (req, res, next) => {
+  const originalSend = res.json.bind(res);
+
+  res.json = function (body) {
+    // Only log on successful responses
+    if (res.statusCode >= 200 && res.statusCode < 300) {
+      AuditLog.create({
+        userId:     req.userId || null,
+        action,
+        entityType,
+        entityId:   req.params?.id || body?.data?._id || body?._id || null,
+        beforeValue: req.originalEntity || null,
+        afterValue:  req.body || null,
+        ipAddress:   req.ip,
+        deviceInfo:  req.headers['user-agent'] || '',
+        notes:       req.body?.notes || req.query?.reason || '',
+      }).catch(err => console.error('Audit log write error:', err.message));
+    }
+    return originalSend(body);
   };
+
+  next();
 };
 
 module.exports = auditLog;

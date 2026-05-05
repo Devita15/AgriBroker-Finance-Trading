@@ -18,7 +18,7 @@ async function testLogin() {
       process.exit(1);
     }
 
-    console.log('\n📋 User Details:');
+    console.log('\n User Details:');
     console.log(`Email: ${user.email}`);
     console.log(`Stored Hash: ${user.passwordHash}`);
     

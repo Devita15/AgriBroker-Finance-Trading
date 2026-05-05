@@ -1,97 +1,104 @@
-const express = require('express');
-const cors = require('cors');
-const helmet = require('helmet');
-const rateLimit = require('express-rate-limit');
-const swaggerUi = require('swagger-ui-express');
-const swaggerJsdoc = require('swagger-jsdoc');
-const errorHandler = require('./middleware/errorHandler');
+// src/app.js
+require('dotenv').config();
 
-const app = express();
+const express        = require('express');
+const cors           = require('cors');
+const helmet         = require('helmet');
+const morgan         = require('morgan');
+const rateLimit      = require('express-rate-limit');
+const swaggerUi      = require('swagger-ui-express');
 
-// Disable helmet completely for development - it blocks Swagger UI resources
-app.use(helmet({
-  contentSecurityPolicy: false,
-  crossOriginEmbedderPolicy: false,
-  crossOriginOpenerPolicy: false,
-  crossOriginResourcePolicy: false,
-  originAgentCluster: false,
+const connectDB      = require('./config/database');
+const swaggerSpec    = require('./config/swagger');
+const logger         = require('./config/logger');
+const errorHandler   = require('./middleware/errorHandler');
+
+// ── Routes ────────────────────────────────────────────────────────────────────
+const authRoutes      = require('./routes/authRoutes');
+const farmerRoutes    = require('./routes/farmerRoutes');
+const purchaseRoutes  = require('./routes/purchaseRoutes');
+const paymentRoutes   = require('./routes/paymentRoutes');
+const expenseRoutes   = require('./routes/expenseRoutes');
+const saleRoutes      = require('./routes/saleRoutes');
+const inventoryRoutes = require('./routes/inventoryRoutes');
+const reportRoutes    = require('./routes/reportRoutes');
+const auditRoutes     = require('./routes/auditRoutes');
+
+const app  = express();
+const PORT = process.env.PORT || 5000;
+
+// ── Security & Request Middleware ─────────────────────────────────────────────
+app.use(helmet());
+app.use(cors({
+  origin:      process.env.CORS_ORIGIN || '*',
+  credentials: true,
 }));
 
-app.use(cors({ origin: '*', credentials: true }));
-app.use(express.json());
+app.use(rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max:      200,
+  message:  { success: false, error: 'Too many requests, please try again later.' },
+}));
+
+// Stricter limit for auth endpoints
+app.use('/api/auth/login',    rateLimit({ windowMs: 15 * 60 * 1000, max: 20, message: { success: false, error: 'Too many login attempts.' } }));
+app.use('/api/auth/register', rateLimit({ windowMs: 60 * 60 * 1000, max: 10, message: { success: false, error: 'Too many registration attempts.' } }));
+
+app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 
-const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 1000,
-  message: { error: 'Too many requests' },
-});
-app.use('/api', limiter);
+// HTTP request logger (skip in test env)
+if (process.env.NODE_ENV !== 'test') {
+  app.use(morgan('combined', {
+    stream: { write: (msg) => logger.info(msg.trim()) },
+  }));
+}
 
-// ===== SWAGGER SETUP - STATIC FILES FIRST =====
-const options = {
-  definition: {
-    openapi: '3.0.0',
-    info: {
-      title: 'Farm ERP API',
-      version: '2.0.0',
-      description: 'Farm ERP System API Documentation',
-    },
-    servers: [
-      {
-        url: '/api',
-        description: 'Server',
-      },
-    ],
-    components: {
-      securitySchemes: {
-        bearerAuth: {
-          type: 'http',
-          scheme: 'bearer',
-          bearerFormat: 'JWT',
-        },
-      },
-    },
-  },
-  apis: ['./src/routes/*.js'],
-};
-
-const swaggerSpec = swaggerJsdoc(options);
-
-// Swagger UI - serve files properly
-app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec, {
-  customCss: '.swagger-ui .topbar { display: none }',
-  customSiteTitle: "Farm ERP API",
-  swaggerOptions: {
-    persistAuthorization: true,
-    docExpansion: 'list',
-  },
-  customfavIcon: false,
+// ── Swagger Docs ───────────────────────────────────────────────────────────────
+// Support both /api/docs and /api-docs for compatibility
+app.use('/api/docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec, {
+  customSiteTitle: 'Farm ERP API Docs',
+  swaggerOptions:  { persistAuthorization: true },
 }));
 
-// Serve swagger spec as JSON
-app.get('/api-docs.json', (req, res) => {
-  // Update server URL dynamically
-  const spec = { ...swaggerSpec };
-  spec.servers = [
-    {
-      url: `${req.protocol}://${req.get('host')}/api`,
-      description: 'Current Server',
-    },
-  ];
-  res.json(spec);
+// Also support /api-docs (without the slash) for the console output
+app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec, {
+  customSiteTitle: 'Farm ERP API Docs',
+  swaggerOptions:  { persistAuthorization: true },
+}));
+
+// Redirect root to API docs (optional)
+app.get('/', (req, res) => {
+  res.redirect('/api-docs');
 });
 
-// Routes
-app.use('/api/auth', require('./routes/authRoutes'));
-app.use('/api/farmers', require('./routes/farmerRoutes'));
-app.use('/api/ledger', require('./routes/ledgerRoutes'));
-app.use('/api/audit-logs', require('./routes/auditRoutes'));
+// ── Health Check ───────────────────────────────────────────────────────────────
+app.get('/health', (req, res) => {
+  res.json({
+    status:    'ok',
+    timestamp: new Date().toISOString(),
+    uptime:    process.uptime(),
+    env:       process.env.NODE_ENV,
+  });
+});
 
+// ── API Routes ─────────────────────────────────────────────────────────────────
+app.use('/api/auth',      authRoutes);
+app.use('/api/farmers',   farmerRoutes);
+app.use('/api/purchases', purchaseRoutes);
+app.use('/api/payments',  paymentRoutes);
+app.use('/api/expenses',  expenseRoutes);
+app.use('/api/sales',     saleRoutes);
+app.use('/api/inventory', inventoryRoutes);
+app.use('/api/reports',   reportRoutes);
+app.use('/api/audit',     auditRoutes);
+
+// ── 404 Handler ────────────────────────────────────────────────────────────────
 app.use((req, res) => {
-  res.status(404).json({ error: 'Route not found' });
+  res.status(404).json({ success: false, error: `Route ${req.originalUrl} not found` });
 });
 
+// ── Global Error Handler ───────────────────────────────────────────────────────
 app.use(errorHandler);
 
 module.exports = app;

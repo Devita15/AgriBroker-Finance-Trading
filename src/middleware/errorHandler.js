@@ -2,23 +2,35 @@
 const logger = require('../config/logger');
 
 const errorHandler = (err, req, res, next) => {
-  logger.error(`${err.statusCode || 500} - ${err.message} - ${req.originalUrl} - ${req.method} - ${req.ip}`);
-  
+  const status = err.statusCode || err.status || 500;
+
+  logger.error(`${status} — ${err.message}`, {
+    url: req.originalUrl,
+    method: req.method,
+    ip: req.ip,
+    stack: err.stack,
+  });
+
   // Mongoose validation error
   if (err.name === 'ValidationError') {
-    const errors = Object.values(err.errors).map(e => e.message);
-    return res.status(400).json({ error: 'Validation Error', details: errors });
+    const details = Object.values(err.errors).map(e => e.message);
+    return res.status(400).json({ success: false, error: 'Validation Error', details });
   }
-  
-  // Mongoose duplicate key error
+
+  // Mongoose duplicate key
   if (err.code === 11000) {
     const field = Object.keys(err.keyPattern)[0];
-    return res.status(409).json({ error: `${field} already exists` });
+    return res.status(409).json({ success: false, error: `${field} already exists` });
   }
-  
-  // JWT errors handled in auth middleware
-  res.status(err.statusCode || 500).json({
-    error: err.message || 'Internal Server Error',
+
+  // Mongoose cast error
+  if (err.name === 'CastError') {
+    return res.status(400).json({ success: false, error: `Invalid ${err.path}: ${err.value}` });
+  }
+
+  res.status(status).json({
+    success: false,
+    error: status === 500 ? 'Internal Server Error' : err.message,
   });
 };
 
